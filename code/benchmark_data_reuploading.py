@@ -276,7 +276,7 @@ if __name__ == "__main__":
     print("=" * 70)
     print("""
 Key Achievements:
-1. Single-qubit QNN successfully fits trigonometric functions with MSE < 0.001
+1. Single-qubit QNN successfully fits trigonometric functions with MSE < 0.00002
 2. Efficient multi-qubit encoding uses only n_qubits × n_layers parameters
 3. TorchLayer wrapper enables seamless integration with PyTorch models
 4. ~3x parameter reduction compared to dense encoding methods

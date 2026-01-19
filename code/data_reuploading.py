@@ -124,7 +124,7 @@ def efficient_encoding_block(x, weights, qubit: int, layer: int):
     """
     # Trainable rotation
     qml.RY(weights[layer, qubit], wires=qubit)
-    # Data encoding with trainable scaling
+    # Direct data encoding (without additional scaling)
     qml.RZ(x, wires=qubit)
 
 
@@ -193,11 +193,16 @@ class EfficientMultiQubitEncoding(nn.Module):
         self.qlayer = qml.qnn.TorchLayer(circuit, weight_shapes)
     
     def _build_circuit(self, inputs, weights):
-        """Build the quantum circuit."""
+        """
+        Build the quantum circuit.
+        
+        Note: If inputs has fewer elements than n_qubits, data is reused
+        cyclically across qubits (data re-uploading pattern).
+        """
         for layer in range(self.n_layers):
             # Encode data into each qubit
             for qubit in range(self.n_qubits):
-                # Handle case where inputs has fewer elements than qubits
+                # Cyclically reuse data if fewer inputs than qubits
                 data_idx = qubit % len(inputs) if len(inputs) < self.n_qubits else qubit
                 efficient_encoding_block(inputs[data_idx], weights, qubit, layer)
             
