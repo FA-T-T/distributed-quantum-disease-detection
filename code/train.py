@@ -211,7 +211,7 @@ def train(
     
     optimizer = optim.Adam(optimizer_params, lr=learning_rate)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='min', factor=0.5, patience=5, verbose=verbose
+        optimizer, mode='min', factor=0.5, patience=5
     )
     
     # Create save directory
