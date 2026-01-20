@@ -218,7 +218,7 @@ class ISIC2017Dataset(Dataset):
     
     def _find_images(self, images_dir: str) -> List[str]:
         """Find all image files in directory."""
-        image_extensions = {'.jpg', '.jpeg', '.png', '.bmp'}
+        image_extensions = {'.jpg', '.jpeg'}
         image_paths = []
         
         if os.path.exists(images_dir):
