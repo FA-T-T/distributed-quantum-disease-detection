@@ -73,6 +73,10 @@ def train_one_epoch(
         
         # Backward pass
         loss.backward()
+        
+        # Gradient clipping to prevent gradient explosion
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        
         optimizer.step()
         
         # Statistics
@@ -159,7 +163,7 @@ def train(
         train_loader: Training data loader.
         val_loader: Optional validation data loader.
         epochs: Number of training epochs.
-        learning_rate: Learning rate.
+        learning_rate: Learning rate (base learning rate for classical layers).
         device: Device to use. If None, auto-detect.
         save_dir: Directory to save checkpoints.
         save_best: Whether to save the best model.
@@ -178,11 +182,36 @@ def train(
     # Move model to device
     model = model.to(device)
     
-    # Loss function and optimizer
+    # Loss function and optimizer with differentiated learning rates
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    
+    # Use differentiated learning rates for quantum and classical layers
+    # Quantum layers typically need higher learning rates due to smaller gradients
+    optimizer_params = []
+    
+    # Check if model has QCNet structure with quantum layers
+    if hasattr(model, 'QModel') and hasattr(model, 'CModel'):
+        optimizer_params = [
+            {'params': model.CModel.parameters(), 'lr': learning_rate * 0.1},  # Classical: 1e-4 if lr=1e-3
+            {'params': model.QModel.parameters(), 'lr': learning_rate * 10},   # Quantum: 1e-2 if lr=1e-3
+            {'params': model.fc2.parameters(), 'lr': learning_rate}            # Final layer: 1e-3
+        ]
+        if hasattr(model, 'fc1'):
+            optimizer_params.append({'params': model.fc1.parameters(), 'lr': learning_rate})
+        
+        if verbose:
+            print("Using differentiated learning rates:")
+            print(f"  Classical layers: {learning_rate * 0.1:.2e}")
+            print(f"  Quantum layers: {learning_rate * 10:.2e}")
+            print(f"  Final layers: {learning_rate:.2e}")
+    else:
+        optimizer_params = model.parameters()
+        if verbose:
+            print(f"Using uniform learning rate: {learning_rate:.2e}")
+    
+    optimizer = optim.Adam(optimizer_params, lr=learning_rate)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='min', factor=0.5, patience=3
+        optimizer, mode='min', factor=0.5, patience=5, verbose=verbose
     )
     
     # Create save directory
