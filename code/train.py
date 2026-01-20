@@ -9,13 +9,14 @@ import os
 import sys
 import argparse
 import time
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any, Tuple, Literal
 from datetime import datetime
+from collections import Counter
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler, Subset
 from tqdm import tqdm
 import numpy as np
 
@@ -24,6 +25,128 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from backbone_3 import QCNet
 from data_loader import get_dummy_loaders, get_isic2017_loaders, DummyDataset
+
+
+def get_balanced_sampler(
+    dataset,
+    strategy: Literal["oversample", "undersample"] = "oversample",
+    random_seed: int = 42
+) -> Tuple[Optional[WeightedRandomSampler], Optional[Subset], int]:
+    """
+    Create a balanced sampler for handling imbalanced datasets.
+    
+    Args:
+        dataset: The dataset (must support indexing and return (data, label) tuples).
+                 If dataset has a 'labels' or 'targets' attribute, it will be used directly.
+        strategy: Balancing strategy - "oversample" or "undersample".
+        random_seed: Random seed for reproducibility.
+        
+    Returns:
+        Tuple of (sampler, subset_dataset, num_samples):
+        - For "oversample": (WeightedRandomSampler, None, num_samples)
+        - For "undersample": (None, Subset, num_samples)
+    """
+    # Try to get labels from dataset attributes first (more efficient)
+    if hasattr(dataset, 'labels'):
+        labels = np.array([int(l) for l in dataset.labels])
+    elif hasattr(dataset, 'targets'):
+        labels = np.array([int(t) for t in dataset.targets])
+    else:
+        # Fallback: iterate through dataset to collect labels
+        labels = []
+        for i in range(len(dataset)):
+            _, label = dataset[i]
+            labels.append(int(label))
+        labels = np.array(labels)
+    
+    class_counts = Counter(labels)
+    num_classes = len(class_counts)
+    
+    if strategy == "oversample":
+        # Compute weights for each sample (inverse of class frequency)
+        class_weights = {cls: 1.0 / count for cls, count in class_counts.items()}
+        sample_weights = [class_weights[label] for label in labels]
+        sample_weights = torch.DoubleTensor(sample_weights)
+        
+        # Number of samples = max_class_count * num_classes for full oversampling
+        max_count = max(class_counts.values())
+        num_samples = max_count * num_classes
+        
+        sampler = WeightedRandomSampler(
+            weights=sample_weights,
+            num_samples=num_samples,
+            replacement=True
+        )
+        return sampler, None, num_samples
+    
+    elif strategy == "undersample":
+        # Undersample to the size of the smallest class
+        min_count = min(class_counts.values())
+        
+        # Get indices for each class
+        class_indices = {cls: np.where(labels == cls)[0] for cls in class_counts.keys()}
+        
+        # Set random seed for reproducibility
+        rng = np.random.default_rng(random_seed)
+        selected_indices = []
+        for cls, indices in class_indices.items():
+            sampled = rng.choice(indices, size=min_count, replace=False)
+            selected_indices.extend(sampled)
+        
+        # Shuffle the selected indices
+        rng.shuffle(selected_indices)
+        
+        subset = Subset(dataset, selected_indices)
+        return None, subset, len(selected_indices)
+    
+    else:
+        raise ValueError(f"Unknown strategy: {strategy}. Use 'oversample' or 'undersample'.")
+
+
+def create_balanced_loader(
+    train_loader: DataLoader,
+    balance_strategy: Literal["oversample", "undersample", "none"] = "oversample"
+) -> Tuple[DataLoader, int]:
+    """
+    Create a balanced DataLoader from an existing DataLoader.
+    
+    Args:
+        train_loader: Original training DataLoader.
+        balance_strategy: Strategy for handling imbalanced data.
+            - "oversample": Use weighted random sampling to oversample minority classes.
+            - "undersample": Reduce majority class samples to match minority class.
+            - "none": No balancing, return original loader.
+            
+    Returns:
+        Tuple of (Balanced DataLoader, num_samples).
+    """
+    if balance_strategy == "none":
+        return train_loader, len(train_loader.dataset)
+    
+    dataset = train_loader.dataset
+    batch_size = train_loader.batch_size
+    num_workers = train_loader.num_workers
+    
+    sampler, subset, num_samples = get_balanced_sampler(dataset, balance_strategy)
+    
+    if balance_strategy == "oversample":
+        loader = DataLoader(
+            dataset,
+            batch_size=batch_size,
+            sampler=sampler,
+            num_workers=num_workers,
+            pin_memory=True
+        )
+        return loader, num_samples
+    else:  # undersample
+        loader = DataLoader(
+            subset,
+            batch_size=batch_size,
+            shuffle=True,
+            num_workers=num_workers,
+            pin_memory=True
+        )
+        return loader, num_samples
 
 
 def train_one_epoch(
@@ -153,7 +276,8 @@ def train(
     device: Optional[torch.device] = None,
     save_dir: str = './checkpoints',
     save_best: bool = True,
-    verbose: bool = True
+    verbose: bool = True,
+    balance_strategy: Literal["oversample", "undersample", "none"] = "oversample"
 ) -> Dict[str, Any]:
     """
     Train the model.
@@ -168,6 +292,10 @@ def train(
         save_dir: Directory to save checkpoints.
         save_best: Whether to save the best model.
         verbose: Whether to print progress.
+        balance_strategy: Strategy for handling imbalanced data. Default is "oversample".
+            - "oversample": Use weighted random sampling to oversample minority classes.
+            - "undersample": Reduce majority class samples to match minority class.
+            - "none": No balancing applied.
         
     Returns:
         Dictionary containing training history.
@@ -178,6 +306,18 @@ def train(
     
     if verbose:
         print(f"Training on device: {device}")
+    
+    # Apply data balancing strategy
+    if balance_strategy != "none":
+        if verbose:
+            original_size = len(train_loader.dataset)
+            print(f"Applying data balancing strategy: {balance_strategy}")
+        train_loader, balanced_samples = create_balanced_loader(train_loader, balance_strategy)
+        if verbose:
+            if balance_strategy == "oversample":
+                print(f"  Original samples: {original_size}, Balanced samples per epoch: {balanced_samples}")
+            else:
+                print(f"  Original samples: {original_size}, Balanced samples: {balanced_samples}")
     
     # Move model to device
     model = model.to(device)
@@ -346,6 +486,9 @@ def main():
                         help='Device to use (cpu/cuda)')
     parser.add_argument('--verbose', action='store_true', default=True,
                         help='Print training progress')
+    parser.add_argument('--balance-strategy', type=str, default='oversample',
+                        choices=['oversample', 'undersample', 'none'],
+                        help='Strategy for handling imbalanced data (default: oversample)')
     
     args = parser.parse_args()
     
@@ -416,7 +559,8 @@ def main():
         device=device,
         save_dir=args.save_dir,
         save_best=True,
-        verbose=args.verbose
+        verbose=args.verbose,
+        balance_strategy=args.balance_strategy
     )
     
     elapsed_time = time.time() - start_time
