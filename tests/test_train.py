@@ -264,32 +264,36 @@ class TestCreateBalancedLoader:
         dataset = ImbalancedDataset()
         original_loader = DataLoader(dataset, batch_size=8)
         
-        balanced_loader = create_balanced_loader(original_loader, "none")
+        balanced_loader, num_samples = create_balanced_loader(original_loader, "none")
         
         assert balanced_loader is original_loader
+        assert num_samples == len(dataset)
     
     def test_oversample_creates_new_loader(self):
         """Test oversampling creates a new DataLoader with sampler."""
         dataset = ImbalancedDataset()
         original_loader = DataLoader(dataset, batch_size=8, num_workers=0)
         
-        balanced_loader = create_balanced_loader(original_loader, "oversample")
+        balanced_loader, num_samples = create_balanced_loader(original_loader, "oversample")
         
         assert balanced_loader is not original_loader
         assert balanced_loader.batch_size == 8
         assert balanced_loader.sampler is not None
+        # Expected: max_count * num_classes = 50 * 3 = 150
+        assert num_samples == 150
     
     def test_undersample_creates_new_loader(self):
         """Test undersampling creates a new DataLoader with subset."""
         dataset = ImbalancedDataset()
         original_loader = DataLoader(dataset, batch_size=8, num_workers=0)
         
-        balanced_loader = create_balanced_loader(original_loader, "undersample")
+        balanced_loader, num_samples = create_balanced_loader(original_loader, "undersample")
         
         assert balanced_loader is not original_loader
         assert balanced_loader.batch_size == 8
         # Undersampled dataset should have 15 samples (5 per class)
         assert len(balanced_loader.dataset) == 15
+        assert num_samples == 15
 
 
 class TestTrainWithBalancing:

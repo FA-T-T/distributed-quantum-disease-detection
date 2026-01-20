@@ -29,27 +29,36 @@ from data_loader import get_dummy_loaders, get_isic2017_loaders, DummyDataset
 
 def get_balanced_sampler(
     dataset,
-    strategy: Literal["oversample", "undersample"] = "oversample"
+    strategy: Literal["oversample", "undersample"] = "oversample",
+    random_seed: int = 42
 ) -> Tuple[Optional[WeightedRandomSampler], Optional[Subset], int]:
     """
     Create a balanced sampler for handling imbalanced datasets.
     
     Args:
         dataset: The dataset (must support indexing and return (data, label) tuples).
+                 If dataset has a 'labels' or 'targets' attribute, it will be used directly.
         strategy: Balancing strategy - "oversample" or "undersample".
+        random_seed: Random seed for reproducibility.
         
     Returns:
         Tuple of (sampler, subset_dataset, num_samples):
         - For "oversample": (WeightedRandomSampler, None, num_samples)
         - For "undersample": (None, Subset, num_samples)
     """
-    # Collect all labels
-    labels = []
-    for i in range(len(dataset)):
-        _, label = dataset[i]
-        labels.append(int(label))
+    # Try to get labels from dataset attributes first (more efficient)
+    if hasattr(dataset, 'labels'):
+        labels = np.array([int(l) for l in dataset.labels])
+    elif hasattr(dataset, 'targets'):
+        labels = np.array([int(t) for t in dataset.targets])
+    else:
+        # Fallback: iterate through dataset to collect labels
+        labels = []
+        for i in range(len(dataset)):
+            _, label = dataset[i]
+            labels.append(int(label))
+        labels = np.array(labels)
     
-    labels = np.array(labels)
     class_counts = Counter(labels)
     num_classes = len(class_counts)
     
@@ -77,15 +86,15 @@ def get_balanced_sampler(
         # Get indices for each class
         class_indices = {cls: np.where(labels == cls)[0] for cls in class_counts.keys()}
         
-        # Randomly sample min_count indices from each class
-        np.random.seed(42)  # For reproducibility
+        # Set random seed for reproducibility
+        rng = np.random.default_rng(random_seed)
         selected_indices = []
         for cls, indices in class_indices.items():
-            sampled = np.random.choice(indices, size=min_count, replace=False)
+            sampled = rng.choice(indices, size=min_count, replace=False)
             selected_indices.extend(sampled)
         
         # Shuffle the selected indices
-        np.random.shuffle(selected_indices)
+        rng.shuffle(selected_indices)
         
         subset = Subset(dataset, selected_indices)
         return None, subset, len(selected_indices)
@@ -97,7 +106,7 @@ def get_balanced_sampler(
 def create_balanced_loader(
     train_loader: DataLoader,
     balance_strategy: Literal["oversample", "undersample", "none"] = "oversample"
-) -> DataLoader:
+) -> Tuple[DataLoader, int]:
     """
     Create a balanced DataLoader from an existing DataLoader.
     
@@ -109,10 +118,10 @@ def create_balanced_loader(
             - "none": No balancing, return original loader.
             
     Returns:
-        Balanced DataLoader.
+        Tuple of (Balanced DataLoader, num_samples).
     """
     if balance_strategy == "none":
-        return train_loader
+        return train_loader, len(train_loader.dataset)
     
     dataset = train_loader.dataset
     batch_size = train_loader.batch_size
@@ -121,21 +130,23 @@ def create_balanced_loader(
     sampler, subset, num_samples = get_balanced_sampler(dataset, balance_strategy)
     
     if balance_strategy == "oversample":
-        return DataLoader(
+        loader = DataLoader(
             dataset,
             batch_size=batch_size,
             sampler=sampler,
             num_workers=num_workers,
             pin_memory=True
         )
+        return loader, num_samples
     else:  # undersample
-        return DataLoader(
+        loader = DataLoader(
             subset,
             batch_size=batch_size,
             shuffle=True,
             num_workers=num_workers,
             pin_memory=True
         )
+        return loader, num_samples
 
 
 def train_one_epoch(
@@ -301,12 +312,12 @@ def train(
         if verbose:
             original_size = len(train_loader.dataset)
             print(f"Applying data balancing strategy: {balance_strategy}")
-        train_loader = create_balanced_loader(train_loader, balance_strategy)
+        train_loader, balanced_samples = create_balanced_loader(train_loader, balance_strategy)
         if verbose:
             if balance_strategy == "oversample":
-                print(f"  Original samples: {original_size}, Balanced samples per epoch: ~{len(train_loader) * train_loader.batch_size}")
+                print(f"  Original samples: {original_size}, Balanced samples per epoch: {balanced_samples}")
             else:
-                print(f"  Original samples: {original_size}, Balanced samples: {len(train_loader.dataset)}")
+                print(f"  Original samples: {original_size}, Balanced samples: {balanced_samples}")
     
     # Move model to device
     model = model.to(device)
