@@ -18,7 +18,7 @@ from test import (
     compute_accuracy,
     compute_loss
 )
-from data_loader import DummyDataset
+from ..code.data_loader import DummyDataset
 
 
 class SimpleModel(nn.Module):

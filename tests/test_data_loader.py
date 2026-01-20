@@ -11,13 +11,13 @@ from torch.utils.data import DataLoader
 # Add code directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'code'))
 
-from data_loader import (
+from ..code.data_loader import (
     DummyDataset,
     create_data_loaders,
     create_single_loader,
     get_dummy_loaders
 )
-from preprocessing import NUM_CLASSES, DEFAULT_IMAGE_SIZE
+from ..code.preprocessing import NUM_CLASSES, DEFAULT_IMAGE_SIZE
 
 
 class TestDummyDataset:

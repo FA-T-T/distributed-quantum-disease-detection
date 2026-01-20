@@ -12,7 +12,7 @@ import numpy as np
 # Add code directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'code'))
 
-from data_reuploading import (
+from ..code.data_reuploading import (
     SingleQubitReuploadingQNN,
     EfficientMultiQubitEncoding,
     DataEncodingTorchLayer,

@@ -11,8 +11,8 @@ import torch.nn as nn
 # Add code directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'code'))
 
-from mobilnet import MobileNetV2
-from mlp import MLP
+from ..code.mobilnet import MobileNetV2
+from ..code.mlp import MLP
 
 
 class TestMobileNetV2:

@@ -13,7 +13,7 @@ import tempfile
 # Add code directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'code'))
 
-from preprocessing import (
+from ..code.preprocessing import (
     get_default_transforms,
     load_image,
     preprocess_image,

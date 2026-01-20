@@ -14,7 +14,7 @@ import numpy as np
 # Add code directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'code'))
 
-from train import (
+from ..code.train import (
     train_one_epoch,
     validate,
     train,
@@ -23,8 +23,8 @@ from train import (
     get_balanced_sampler,
     create_balanced_loader
 )
-from data_loader import DummyDataset
-from mobilnet import MobileNetV2
+from ..code.data_loader import DummyDataset
+from ..code.mobilnet import MobileNetV2
 
 
 class ImbalancedDataset(Dataset):

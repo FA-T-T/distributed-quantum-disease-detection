@@ -11,7 +11,7 @@ import torch.nn as nn
 # Add code directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'code'))
 
-from validation import (
+from ..code.validation import (
     validate_image_tensor,
     validate_model_input,
     validate_model_output,

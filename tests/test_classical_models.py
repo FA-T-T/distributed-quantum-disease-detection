@@ -11,7 +11,7 @@ import torch.nn as nn
 # Add code directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'code'))
 
-from classical_backbone import (
+from ..code.classical_backbone import (
     ClassicalCNN,
     VGGClassifier,
     ResNetClassifier,
