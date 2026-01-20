@@ -186,31 +186,34 @@ def combine_outputs(probabilities_front_1, probabilities_front_2, probabilities_
 class QNN(nn.Module):
     def __init__(self):
         super(QNN, self).__init__()
-        # self.fc1 = nn.Linear(3*128*128, 8) 
-        # self.n_qubits=5
-        # self.output_dim=3
-        # self.mlp_output = nn.Linear(2**self.n_qubits,self.output_dim)
-
-        # self.activation_func = nn.ELU()
-        # self.flatten_layer = nn.Flatten()
-        # 定义共享权重张量
-        self.shared_weights_1 = nn.Parameter(torch.rand((n_layers, (n_qubits_1 - 1) * 5)), requires_grad=True)
-        weight_shapes_1 = {"weights": (n_layers, (n_qubits_1 - 1) * 5)} # 指定weights的形状，参数配置？
-        self.QLayer_front_1 = qml.qnn.TorchLayer(circuit_front_1, weight_shapes_1)  # QNode ==> TorchLayer
-        self.QLayer_front_2 = qml.qnn.TorchLayer(circuit_front_2, weight_shapes_1)  # QNode ==> TorchLayer
-        self.QLayer_front_3 = qml.qnn.TorchLayer(circuit_front_3, weight_shapes_1)  # QNode ==> TorchLayer
+        
+        # 定义共享权重张量 - 使用正确的初始化范围 [-π/4, π/4] 而不是 [0, 1)
+        # 这对量子旋转门更合适，有助于训练稳定性
+        self.shared_weights_1 = nn.Parameter(torch.empty((n_layers, (n_qubits_1 - 1) * 5)), requires_grad=True)
+        nn.init.uniform_(self.shared_weights_1, -np.pi/4, np.pi/4)
+        
+        weight_shapes_1 = {"weights": (n_layers, (n_qubits_1 - 1) * 5)}
+        self.QLayer_front_1 = qml.qnn.TorchLayer(circuit_front_1, weight_shapes_1)
+        self.QLayer_front_2 = qml.qnn.TorchLayer(circuit_front_2, weight_shapes_1)
+        self.QLayer_front_3 = qml.qnn.TorchLayer(circuit_front_3, weight_shapes_1)
+        
+        # 使用.data共享权重 - 注意这会使每个层使用相同的权重参数
         self.QLayer_front_1.weights.data = self.shared_weights_1
         self.QLayer_front_2.weights.data = self.shared_weights_1
         self.QLayer_front_3.weights.data = self.shared_weights_1
 
-        self.shared_weights_2 = nn.Parameter(torch.rand((n_layers, (n_qubits_2 - 1) * 5)), requires_grad=True)
-        weight_shapes_2 = {"weights": (n_layers, (n_qubits_2 - 1) * 5)} # 指定weights的形状，参数配置？
-        self.QLayer_back_1 = qml.qnn.TorchLayer(circuit_back_1, weight_shapes_2)  # QNode ==> TorchLayer
-        self.QLayer_back_2 = qml.qnn.TorchLayer(circuit_back_2, weight_shapes_2)  # QNode ==> TorchLayer
-        self.QLayer_back_3 = qml.qnn.TorchLayer(circuit_back_3, weight_shapes_2)  # QNode ==> TorchLayer
-        self.QLayer_back_4 = qml.qnn.TorchLayer(circuit_back_4, weight_shapes_2)  # QNode ==> TorchLayer
-        self.QLayer_back_5 = qml.qnn.TorchLayer(circuit_back_5, weight_shapes_2)  # QNode ==> TorchLayer
-        self.QLayer_back_6 = qml.qnn.TorchLayer(circuit_back_6, weight_shapes_2)  # QNode ==> TorchLayer
+        self.shared_weights_2 = nn.Parameter(torch.empty((n_layers, (n_qubits_2 - 1) * 5)), requires_grad=True)
+        nn.init.uniform_(self.shared_weights_2, -np.pi/4, np.pi/4)
+        
+        weight_shapes_2 = {"weights": (n_layers, (n_qubits_2 - 1) * 5)}
+        self.QLayer_back_1 = qml.qnn.TorchLayer(circuit_back_1, weight_shapes_2)
+        self.QLayer_back_2 = qml.qnn.TorchLayer(circuit_back_2, weight_shapes_2)
+        self.QLayer_back_3 = qml.qnn.TorchLayer(circuit_back_3, weight_shapes_2)
+        self.QLayer_back_4 = qml.qnn.TorchLayer(circuit_back_4, weight_shapes_2)
+        self.QLayer_back_5 = qml.qnn.TorchLayer(circuit_back_5, weight_shapes_2)
+        self.QLayer_back_6 = qml.qnn.TorchLayer(circuit_back_6, weight_shapes_2)
+        
+        # 使用.data共享权重
         self.QLayer_back_1.weights.data = self.shared_weights_2
         self.QLayer_back_2.weights.data = self.shared_weights_2
         self.QLayer_back_3.weights.data = self.shared_weights_2
@@ -218,8 +221,10 @@ class QNN(nn.Module):
         self.QLayer_back_5.weights.data = self.shared_weights_2
         self.QLayer_back_6.weights.data = self.shared_weights_2
 
-    def forward(self, inputs): # inputs = stack(batch_size, x], dim=0)
-
+    def forward(self, inputs): # inputs = stack([batch_size, 8], dim=0)
+        # 注意：TorchLayer不支持原生批处理，需要逐样本处理
+        # 这是PennyLane TorchLayer的限制，不是设计缺陷
+        
         output_front_1=[]
         output_front_2=[]
         output_front_3=[]
@@ -230,6 +235,7 @@ class QNN(nn.Module):
         output_back_4=[]
         output_back_5=[]
         output_back_6=[]
+        
         for i in inputs:
             output_front_1.append(self.QLayer_front_1(i[:n_qubits_1]))
             output_front_2.append(self.QLayer_front_2(i[:n_qubits_1]))
