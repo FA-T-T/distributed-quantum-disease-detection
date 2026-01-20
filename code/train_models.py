@@ -34,6 +34,11 @@ from models import MobileNetV2Baseline, MobileNetV2Hybrid, get_model
 from data_loader import get_dummy_loaders, get_isic2017_loaders
 
 
+# Learning rate multipliers for hybrid model
+# Quantum layers typically need higher LR due to smaller gradients
+QUANTUM_LR_MULTIPLIER = 10.0  # Multiplier for quantum layer learning rate
+
+
 def get_balanced_sampler(
     dataset,
     strategy: Literal["oversample", "undersample"] = "oversample",
@@ -266,16 +271,17 @@ def train(
     # Configure optimizer based on model type
     if model_type == "hybrid" and hasattr(model, 'qnn'):
         # Use differentiated learning rates for hybrid model
+        # Only include trainable parameters from fc1, qnn, and fc2
+        # Backbone is frozen so we skip it
+        quantum_lr = learning_rate * QUANTUM_LR_MULTIPLIER
         optimizer_params = [
-            {'params': model.backbone.parameters(), 'lr': learning_rate * 0.1},  # Frozen backbone (still set LR)
             {'params': model.fc1.parameters(), 'lr': learning_rate},
-            {'params': model.qnn.parameters(), 'lr': learning_rate * 10},  # Higher LR for quantum
+            {'params': model.qnn.parameters(), 'lr': quantum_lr},
             {'params': model.fc2.parameters(), 'lr': learning_rate}
         ]
         if verbose:
             print("Using differentiated learning rates for hybrid model:")
-            print(f"  Classical backbone: {learning_rate * 0.1:.2e}")
-            print(f"  Quantum layers: {learning_rate * 10:.2e}")
+            print(f"  Quantum layers: {quantum_lr:.2e}")
             print(f"  FC layers: {learning_rate:.2e}")
     else:
         optimizer_params = filter(lambda p: p.requires_grad, model.parameters())
