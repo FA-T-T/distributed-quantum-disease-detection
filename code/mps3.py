@@ -14,7 +14,7 @@ import os
 
 # 只要跟切割电路有关，是否都可以用该方法复现？将所有与切割电路有关的输出线路，全部测量，根据切割点测量值，逐一恢复
 # qml.qnn.TorchLayer层的返回值类型  tensor类型
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 # Quantum Network: 
 n_layers = 1  # 电路层数
 n_qubits_1 = 4  # 8+9 16+17比特？

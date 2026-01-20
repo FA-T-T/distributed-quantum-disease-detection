@@ -6,7 +6,7 @@ import numpy as np
 import os
 
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 # Quantum Network: 
 n_layers = 1  # 电路层数
 n_qubits_1 = 4  # 8+9 16+17比特？
