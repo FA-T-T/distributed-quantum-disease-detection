@@ -2,7 +2,10 @@
 Main entry point for the Distributed Quantum Disease Detection system.
 
 This script provides a unified interface for training, testing,
-and inference with the QCNet model for skin cancer classification.
+and inference with multiple model types for skin cancer classification:
+- QCNet: Original quantum-classical hybrid network
+- Baseline: MobileNetV2 with pretrained weights and frozen backbone (classical baseline)
+- Hybrid: MobileNetV2 + QNN layer (quantum-classical hybrid)
 """
 
 import os
@@ -16,6 +19,7 @@ import torch
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from backbone_3 import QCNet
+from models import MobileNetV2Baseline, MobileNetV2Hybrid, get_model as get_mobilenet_model
 from data_loader import get_dummy_loaders, get_isic2017_loaders
 from train import train, load_checkpoint
 from test import evaluate, predict
@@ -50,27 +54,53 @@ def get_device(device_name: Optional[str] = None) -> torch.device:
 
 def cmd_train(args):
     """Handle train command."""
-    from train import main as train_main
-    
-    # Build argument list for train script
-    sys.argv = ['train.py']
-    
-    if args.data_dir:
-        sys.argv.extend(['--data-dir', args.data_dir])
-    if args.epochs:
-        sys.argv.extend(['--epochs', str(args.epochs)])
-    if args.batch_size:
-        sys.argv.extend(['--batch-size', str(args.batch_size)])
-    if args.learning_rate:
-        sys.argv.extend(['--learning-rate', str(args.learning_rate)])
-    if args.save_dir:
-        sys.argv.extend(['--save-dir', args.save_dir])
-    if args.use_dummy:
-        sys.argv.append('--use-dummy')
-    if args.device:
-        sys.argv.extend(['--device', args.device])
-    
-    train_main()
+    # Check model type and use appropriate training script
+    if hasattr(args, 'model') and args.model in ['baseline', 'hybrid']:
+        from train_models import main as train_models_main
+        
+        # Build argument list for train_models script
+        sys.argv = ['train_models.py']
+        sys.argv.extend(['--model', args.model])
+        
+        if args.data_dir:
+            sys.argv.extend(['--data-dir', args.data_dir])
+        if args.epochs:
+            sys.argv.extend(['--epochs', str(args.epochs)])
+        if args.batch_size:
+            sys.argv.extend(['--batch-size', str(args.batch_size)])
+        if args.learning_rate:
+            sys.argv.extend(['--learning-rate', str(args.learning_rate)])
+        if args.save_dir:
+            sys.argv.extend(['--save-dir', args.save_dir])
+        if args.use_dummy:
+            sys.argv.append('--use-dummy')
+        if args.device:
+            sys.argv.extend(['--device', args.device])
+        
+        train_models_main()
+    else:
+        # Default to original QCNet training
+        from train import main as train_main
+        
+        # Build argument list for train script
+        sys.argv = ['train.py']
+        
+        if args.data_dir:
+            sys.argv.extend(['--data-dir', args.data_dir])
+        if args.epochs:
+            sys.argv.extend(['--epochs', str(args.epochs)])
+        if args.batch_size:
+            sys.argv.extend(['--batch-size', str(args.batch_size)])
+        if args.learning_rate:
+            sys.argv.extend(['--learning-rate', str(args.learning_rate)])
+        if args.save_dir:
+            sys.argv.extend(['--save-dir', args.save_dir])
+        if args.use_dummy:
+            sys.argv.append('--use-dummy')
+        if args.device:
+            sys.argv.extend(['--device', args.device])
+        
+        train_main()
 
 
 def cmd_test(args):
@@ -104,19 +134,34 @@ def cmd_info(args):
     device = get_device(args.device)
     print(f"Device: {device}")
     
-    # Create model
-    model = QCNet()
+    model_type = getattr(args, 'model', 'qcnet')
+    
+    if model_type == 'baseline':
+        print(f"\nModel Architecture: MobileNetV2Baseline")
+        model = MobileNetV2Baseline(num_classes=NUM_CLASSES, pretrained=False)
+        print(f"  - Classical backbone: MobileNetV2 (pretrained on ImageNet)")
+        print(f"  - Frozen backbone: Yes (only classifier trainable)")
+        print(f"  - Number of classes: {NUM_CLASSES}")
+    elif model_type == 'hybrid':
+        print(f"\nModel Architecture: MobileNetV2Hybrid")
+        model = MobileNetV2Hybrid(num_classes=NUM_CLASSES, pretrained=False)
+        print(f"  - Classical backbone: MobileNetV2 (pretrained on ImageNet)")
+        print(f"  - Quantum network: Distributed QNN with circuit cutting")
+        print(f"  - Number of qubits: 8 (4 + 5 with overlap)")
+        print(f"  - Number of classes: {NUM_CLASSES}")
+    else:
+        print(f"\nModel Architecture: QCNet")
+        model = QCNet()
+        print(f"  - Classical backbone: MobileNetV2")
+        print(f"  - Quantum network: Distributed QNN with circuit cutting")
+        print(f"  - Number of qubits: 8 (4 + 5 with overlap)")
+        print(f"  - Number of classes: {NUM_CLASSES}")
+    
     model = model.to(device)
     
     # Count parameters
     total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    
-    print(f"\nModel Architecture: QCNet")
-    print(f"  - Classical backbone: MobileNetV2")
-    print(f"  - Quantum network: Distributed QNN with circuit cutting")
-    print(f"  - Number of qubits: 8 (4 + 5 with overlap)")
-    print(f"  - Number of classes: {NUM_CLASSES}")
     
     print(f"\nParameter Count:")
     print(f"  - Total parameters: {total_params:,}")
@@ -155,8 +200,18 @@ def cmd_validate(args):
     device = get_device(args.device)
     print(f"Device: {device}")
     
-    # Create model
-    model = QCNet()
+    model_type = getattr(args, 'model', 'qcnet')
+    
+    if model_type == 'baseline':
+        print(f"\nModel: MobileNetV2Baseline")
+        model = MobileNetV2Baseline(num_classes=NUM_CLASSES, pretrained=False)
+    elif model_type == 'hybrid':
+        print(f"\nModel: MobileNetV2Hybrid")
+        model = MobileNetV2Hybrid(num_classes=NUM_CLASSES, pretrained=False)
+    else:
+        print(f"\nModel: QCNet")
+        model = QCNet()
+    
     model = model.to(device)
     model.eval()
     
@@ -210,6 +265,9 @@ def main():
     
     # Train command
     train_parser = subparsers.add_parser('train', help='Train the model')
+    train_parser.add_argument('--model', type=str, default='qcnet',
+                              choices=['qcnet', 'baseline', 'hybrid'],
+                              help='Model type to train (default: qcnet)')
     train_parser.add_argument('--data-dir', type=str, default='./data',
                               help='Path to data directory')
     train_parser.add_argument('--epochs', type=int, default=10,
@@ -242,11 +300,17 @@ def main():
     
     # Info command
     info_parser = subparsers.add_parser('info', help='Show model information')
+    info_parser.add_argument('--model', type=str, default='qcnet',
+                             choices=['qcnet', 'baseline', 'hybrid'],
+                             help='Model type to show info for (default: qcnet)')
     info_parser.add_argument('--device', type=str, default=None,
                              help='Device to use (cpu/cuda)')
     
     # Validate command
     validate_parser = subparsers.add_parser('validate', help='Validate tensor dimensions')
+    validate_parser.add_argument('--model', type=str, default='qcnet',
+                                 choices=['qcnet', 'baseline', 'hybrid'],
+                                 help='Model type to validate (default: qcnet)')
     validate_parser.add_argument('--device', type=str, default=None,
                                  help='Device to use (cpu/cuda)')
     
